@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K-Pop 為什麼會紅？— 用資料科學與 MIR 拆解爆紅公式</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --ink: #111827;
+      --muted: #4b5563;
+      --accent: #e11d48;
+      --accent-soft: #ffe4e6;
+      --indigo: #4f46e5;
+      --indigo-soft: #e0e7ff;
+      --teal: #0d9488;
+      --teal-soft: #ccfbf1;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      background: #0f172a;
+      color: var(--ink);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Top Navbar */
+    header {
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #334155;
+      font-size: 14px;
+    }
+    .brand { font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 10px; }
+    .badge {
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .controls { display: flex; align-items: center; gap: 12px; }
+    button {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    button:hover { background: #475569; }
+    button.primary { background: var(--accent); }
+    button.primary:hover { background: #be123c; }
+    .progress-bar {
+      height: 4px;
+      background: #334155;
+      width: 100%;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--indigo));
+      width: 10%;
+      transition: width 0.3s ease;
+    }
+
+    /* Slide Viewport */
+    main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      overflow: hidden;
+    }
+    .slide {
+      display: none;
+      width: 100%;
+      max-width: 1060px;
+      height: 100%;
+      max-height: 640px;
+      background: var(--surface);
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.45);
+      padding: 44px 56px;
+      flex-direction: column;
+      justify-content: space-between;
+      animation: fadeIn 0.28s ease;
+      overflow-y: auto;
+    }
+    .slide.active { display: flex; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .slide-tag {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    h1 { font-size: 40px; line-height: 1.2; font-weight: 800; color: var(--ink); margin-bottom: 16px; }
+    h2 { font-size: 28px; line-height: 1.3; font-weight: 800; color: var(--ink); margin-bottom: 16px; }
+    p.lead { font-size: 18px; line-height: 1.6; color: var(--muted); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 12px; }
+
+    .card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h3 { font-size: 17px; margin-bottom: 8px; color: var(--ink); }
+    .card p, .card li { font-size: 14.5px; line-height: 1.55; color: var(--muted); }
+    .card ul { padding-left: 18px; }
+    .card li { margin-bottom: 6px; }
+
+    .stat-box {
+      background: var(--indigo-soft);
+      border-left: 4px solid var(--indigo);
+      padding: 16px 20px;
+      border-radius: 8px;
+    }
+    .stat-box.rose { background: var(--accent-soft); border-left-color: var(--accent); }
+    .stat-box.teal { background: var(--teal-soft); border-left-color: var(--teal); }
+    .stat-num { font-size: 30px; font-weight: 800; color: var(--ink); }
+    .stat-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+
+    /* Bar chart component */
+    .bar-group { margin: 12px 0; }
+    .bar-label { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 600; margin-bottom: 5px; }
+    .bar-track { height: 14px; background: #e2e8f0; border-radius: 999px; overflow: hidden; display: flex; }
+    .bar-fill-melon { background: #10b981; height: 100%; }
+    .bar-fill-spotify { background: #4f46e5; height: 100%; }
+    .bar-fill-rose { background: var(--accent); height: 100%; }
+
+    /* Timeline blocks */
+    .timeline-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+    .timeline-year { width: 110px; font-weight: 800; font-size: 14px; }
+    .timeline-blocks { flex: 1; display: flex; height: 38px; border-radius: 8px; overflow: hidden; font-size: 12px; font-weight: 700; color: #fff; }
+    .t-intro { background: #64748b; display: flex; align-items: center; justify-content: center; }
+    .t-verse { background: #3b82f6; display: flex; align-items: center; justify-content: center; }
+    .t-chorus { background: #e11d48; display: flex; align-items: center; justify-content: center; }
+    .t-bridge { background: #8b5cf6; display: flex; align-items: center; justify-content: center; }
+
+    /* Interactive Demo Box */
+    .quiz-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: #fff;
+      color: var(--ink);
+      border: 1.5px solid var(--border);
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      font-size: 14.5px;
+    }
+    .quiz-btn:hover { border-color: var(--indigo); background: #f8fafc; }
+    .quiz-feedback {
+      margin-top: 10px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #f1f5f9;
+      display: none;
+    }
+
+    footer.slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12.5px;
+      color: #9ca3af;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 16px;
+    }
+    .wiki-ref {
+      background: #f3f4f6;
+      color: #374151;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span>K-Pop Hit Song Science</span>
+    <span class="badge">LLM Wiki 教學簡報</span>
+  </div>
+  <div class="controls">
+    <span id="slide-counter">1 / 10</span>
+    <button onclick="prevSlide()">← 上一頁</button>
+    <button class="primary" onclick="nextSlide()">下一頁 →</button>
+  </div>
+</header>
+<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+
+<main>
+  <!-- Slide 1: Cover -->
+  <section class="slide active">
+    <div>
+      <div class="slide-tag">Music Information Retrieval × K-Pop Analytics</div>
+      <h1>一首 K-Pop 為什麼會紅？<br/>用資料科學拆解爆紅音訊與結構公式</h1>
+      <p class="lead">從 Spotify 音訊特徵、多段式拼接曲風，到 TikTok 短影音演算法與多模態 AI 預測模型——帶你用工程與數據視角聽懂 K-Pop。</p>
+    </div>
+    <div class="grid-3">
+      <div class="stat-box rose">
+        <div class="stat-num">3:32 → 2:38</div>
+        <div class="stat-label">2015–2026 主打歌平均長度壓縮</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">4.2 秒</div>
+        <div class="stat-label">現代 K-Pop 平均前奏長度（前奏消失）</div>
+      </div>
+      <div class="stat-box teal">
+        <div class="stat-num">AUC 0.91</div>
+        <div class="stat-label">多模態模型（音訊+歌詞+編舞）預測力</div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>知識來源：K-Pop Hit Song Science LLM Wiki（整合 5 篇 MIR 論文）</span>
+      <span>提示：可使用鍵盤左右方向鍵 ← → 切換投影片</span>
+    </footer>
+  </section>
+
+  <!-- Slide 2: What is Hit Song Science -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">01 / 基礎概念入門</div>
+      <h2>什麼是「熱門歌曲科學（Hit Song Science）」？</h2>
+      <p class="lead">在音樂資訊檢索（MIR）領域，科學家試圖回答：<b>「我們能不能在歌曲發行前，就透過聲音訊號預測它會不會進榜？」</b></p>
+      <div class="grid-2" style="margin-top: 20px;">
+        <div class="card">
+          <h3>核心假設：聲學群聚理論</h3>
+          <ul>
+            <li>人類大眾在特定時期的聽覺審美並非完全隨機。</li>
+            <li>熱門歌曲在速度（BPM）、響度、節拍穩定度等量化指標上，往往會聚集在特定的「甜蜜點區間」。</li>
+            <li>機器學習模型（如 Random Forest）分類「是否進榜」準確率可達 <b>85%–88%</b>。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>純音訊模型的天花板</h3>
+          <ul>
+            <li>當研究人員嘗試僅用音訊特徵去預測「精確串流熱度（0–100分）」時，回歸解釋力 <b>R² 僅約 20.2%</b>（AUC 0.74）。</li>
+            <li><b>關鍵啟示</b>：好聽的音訊參數只是「入場券」；要解釋 K-Pop 的病毒式爆紅，還必須看<b>曲風結構、短影音演算法與編舞視覺</b>。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[concepts/hit-song-science]]</span> <span class="wiki-ref">[[sources/paper-01-hss]]</span></span>
+      <span>Slide 2 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 3: Spotify Audio Features -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">02 / 量化聽覺指紋</div>
+      <h2>資料科學家如何把「音樂」變成數字？</h2>
+      <p class="lead">Spotify Web API 透過訊號處理，將一首歌拆解為五個核心量化特徵（0.0 至 1.0）：</p>
+      <div class="grid-2" style="margin-top: 16px;">
+        <div class="card">
+          <h3>三大正相關推進器</h3>
+          <ul>
+            <li><b>Danceability（可舞性）</b>：節拍穩定度與律動規律性。全球熱門 K-Pop 平均高達 <b>0.76</b>。</li>
+            <li><b>Energy（能量值）</b>：感知強度、動態密度與速度感。舞曲主打通常落於 <b>0.75–0.85</b>。</li>
+            <li><b>Loudness（響度, dB）</b>：現代流行樂普遍將母帶響度推高至 <b>-6 dB 至 -4 dB</b>，在手機喇叭上更具衝擊力。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>兩大風格分水嶺指標</h3>
+          <ul>
+            <li><b>Valence（情緒正向度）</b>：高分代表快樂明朗（大調）；低分代表暗黑酷帥（小調）。</li>
+            <li><b>Acousticness（原聲程度）</b>：與全球串流熱度呈<b>負相關</b>——現代主流 K-Pop 高度依賴電子合成器與數位重低音。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[entities/spotify-audio-features]]</span></span>
+      <span>Slide 3 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 4: K-Pop Song Structure -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">03 / K-Pop 的結構魔法</div>
+      <h2>打破歐美公式：多段式拼接與 Anti-Drop</h2>
+      <p class="lead">傳統歐美流行樂由單一主旋律線性推進；K-Pop 則像「高密度感官蒙太奇」，平均每 <b>15–20 秒</b> 切換一次曲風與音色。</p>
+      <div class="grid-3" style="margin-top: 18px;">
+        <div class="card">
+          <h3>1. 多段式拼接 (Patchwork)</h3>
+          <p>在一首 3 分鐘歌曲中無縫融合 3 至 5 種曲風（如 Trap 主歌 → R&B 導歌 → EDM 副歌），持續刷新聽覺多巴胺，防止聽眾滑走。</p>
+        </div>
+        <div class="card">
+          <h3>2. 反高潮 (Anti-Drop)</h3>
+          <p>在 Pre-Chorus 將音量與頻率堆疊到頂點後，副歌瞬間<b>抽空所有鼓組</b>，只留重低音與氣音人聲（如 aespa、NewJeans），用「留白反差」製造記憶點。</p>
+        </div>
+        <div class="card">
+          <h3>3. 雙語音節 Hook</h3>
+          <p>副歌大量安插開放母音的簡短英文詞（如 <i>Super Shy, Next Level</i>）與擬聲詞，讓非韓語母語者聽一遍就能跟著哼唱。</p>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[concepts/kpop-song-structure]]</span> <span class="wiki-ref">[[entities/smp-and-anti-drop]]</span></span>
+      <span>Slide 4 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 5: The TikTok Effect -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">04 / 短影音與演算法重塑</div>
+      <h2>「TikTok 效應」如何把 K-Pop 壓縮進 2 分半？</h2>
+      <p class="lead">為了搶攻短影音 <b>前 3 秒留存率</b> 與 Spotify <b>30 秒有效串流門檻</b>，2015 至 2026 年的 K-Pop 歌曲時間軸發生劇烈變形：</p>
+
+      <div style="margin-top: 22px;">
+        <div class="timeline-row">
+          <div class="timeline-year">2015 年<br/><span style="font-weight:400;font-size:12px;color:#64748b;">平均 3:32 (212s)</span></div>
+          <div class="timeline-blocks">
+            <div class="t-intro" style="width: 14%;">前奏 14.5s</div>
+            <div class="t-verse" style="width: 24%;">主歌 + 導歌</div>
+            <div class="t-chorus" style="width: 22%;">副歌 1</div>
+            <div class="t-verse" style="width: 16%;">主歌 2</div>
+            <div class="t-bridge" style="width: 12%;">Bridge 轉調</div>
+            <div class="t-chorus" style="width: 12%;">副歌 + 尾奏</div>
+          </div>
+        </div>
+
+        <div class="timeline-row">
+          <div class="timeline-year" style="color: var(--accent);">2024–2026<br/><span style="font-weight:400;font-size:12px;color:#64748b;">平均 2:38 (158s)</span></div>
+          <div class="timeline-blocks" style="width: 75%;">
+            <div class="t-intro" style="width: 6%;">4.2s</div>
+            <div class="t-chorus" style="width: 28%;">副歌前置 (35s內進副歌)</div>
+            <div class="t-verse" style="width: 24%;">精簡主歌</div>
+            <div class="t-chorus" style="width: 28%;">副歌 2 (15s 挑戰段)</div>
+            <div class="t-chorus" style="width: 14%; background:#be123c;">戛然而止</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 16px;">
+        <div class="card"><p><b>42% 歌曲低於 2 分 30 秒</b>：曲長縮短能提高單曲自動重播率（Loop Rate），在相同聆聽時間內累積更多有效串流。</p></div>
+        <div class="card"><p><b>Bridge 與尾奏消亡</b>：超過 55% 歌曲採用副歌開場（Chorus-First），並在最後副歌結束時直接切斷，誘導聽眾重播。</p></div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[concepts/tiktok-effect]]</span> <span class="wiki-ref">[[sources/paper-03-tiktok-effect]]</span></span>
+      <span>Slide 5 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 6: Cross-Cultural Preference -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">05 / 跨文化市場分歧</div>
+      <h2>為什麼「韓國人愛聽的」跟「歐美愛聽的」不一樣？</h2>
+      <p class="lead">比較韓國最大音源榜 <b>Melon</b> 與全球 <b>Spotify</b> 的音訊特徵，揭示「牆內開花牆外香」的數據真相（差異達 $p &lt; 0.001$）：</p>
+
+      <div class="grid-2" style="margin-top: 18px;">
+        <div class="card">
+          <h3>音訊特徵平均數值對比</h3>
+          <div class="bar-group">
+            <div class="bar-label"><span>Energy（能量值）</span><span>Melon 0.64 vs. Spotify 0.79</span></div>
+            <div class="bar-track"><div class="bar-fill-melon" style="width: 64%;"></div></div>
+            <div class="bar-track" style="margin-top:4px;"><div class="bar-fill-spotify" style="width: 79%;"></div></div>
+          </div>
+          <div class="bar-group">
+            <div class="bar-label"><span>Valence（情緒正向度）</span><span>Melon 0.62 vs. Spotify 0.46</span></div>
+            <div class="bar-track"><div class="bar-fill-melon" style="width: 62%;"></div></div>
+            <div class="bar-track" style="margin-top:4px;"><div class="bar-fill-spotify" style="width: 46%;"></div></div>
+          </div>
+          <div class="bar-group">
+            <div class="bar-label"><span>Acousticness（原聲比例）</span><span>Melon 0.28 vs. Spotify 0.12</span></div>
+            <div class="bar-track"><div class="bar-fill-melon" style="width: 28%;"></div></div>
+            <div class="bar-track" style="margin-top:4px;"><div class="bar-fill-spotify" style="width: 12%;"></div></div>
+          </div>
+          <p style="font-size:12px;margin-top:8px;">綠色：韓國 Melon Top 100 ｜ 靛藍色：全球 Spotify Top 200</p>
+        </div>
+
+        <div class="card">
+          <h3>雙市場聽覺畫像解讀</h3>
+          <ul>
+            <li><b>韓國本土 Melon（大眾日常聆聽）</b>：偏好高 Valence、清亮旋律、大調與樂團/抒情原聲感（Easy-Listening），適合通勤與日常循環。</li>
+            <li><b>全球 Spotify（派對與舞台視覺）</b>：將 K-Pop 視為高強度舞曲，偏好小調暗黑感（低 Valence）、重低音與高能量群舞曲風。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[concepts/cross-cultural-preference]]</span> <span class="wiki-ref">[[sources/paper-04-cross-cultural]]</span></span>
+      <span>Slide 6 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 7: Multimodal Prediction -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">06 / 多模態 AI 預測模型</div>
+      <h2>為什麼只聽聲音不夠？多模態模型的三大支柱</h2>
+      <p class="lead">K-Pop 是高度整合的「視聽產業」。結合 <b>音訊 + 歌詞 + 編舞動作</b> 後，爆紅預測 AUC 從 <b>0.74 躍升至 0.91</b>：</p>
+      <div class="grid-3" style="margin-top: 18px;">
+        <div class="card">
+          <h3>1. 音訊頻譜 (Audio)</h3>
+          <p>使用 CNN 分析梅爾頻譜圖（Mel-Spectrogram），提取「副歌與主歌的能量對比度」，捕捉 Anti-Drop 或 Beat Drop 的戲劇反差。</p>
+        </div>
+        <div class="card">
+          <h3>2. 雙語歌詞 (Lyrics)</h3>
+          <p>計算歌詞重複壓縮率與<b>英文佔比（熱門曲平均達 38%–45%）</b>。高英文比例能顯著降低全球聽眾的跟唱與記憶門檻。</p>
+        </div>
+        <div class="card">
+          <h3>3. 編舞視覺 (Choreography)</h3>
+          <p>透過姿態估計模型分析副歌 15 秒舞蹈：<b>上半身手勢集中、適合直式手機螢幕拍攝</b>的 Point Dance，其挑戰參與度是複雜走位舞的 <b>3.4 倍</b>。</p>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>Wiki 溯源：<span class="wiki-ref">[[concepts/multimodal-hit-prediction]]</span> <span class="wiki-ref">[[sources/paper-05-multimodal]]</span></span>
+      <span>Slide 7 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 8: Interactive Check -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">07 / 隨堂數據診斷挑戰</div>
+      <h2>製作人實戰測試：哪一首設定最容易在 TikTok 爆紅？</h2>
+      <p class="lead">假設你是一位 K-Pop 製作人，根據本 Wiki 的 5 篇論文結論，下列哪一個製作方案最符合「全球短影音病毒式擴散」特徵？</p>
+      <div style="margin-top: 18px;">
+        <button class="quiz-btn" onclick="checkAnswer(1)">A. 曲長 3 分 50 秒，前奏 22 秒鋼琴獨奏，副歌在 1 分 10 秒出現，全韓文抒情歌詞，編舞強調大範圍隊形變換。</button>
+        <button class="quiz-btn" onclick="checkAnswer(2)">B. 曲長 2 分 32 秒，前奏僅 4 秒，30 秒內進入 Anti-Drop 副歌，英文歌詞佔比 42%，搭配上半身手勢記憶點編舞。</button>
+        <button class="quiz-btn" onclick="checkAnswer(3)">C. 曲長 3 分 15 秒，維持單一民謠吉他和弦貫穿全曲，響度 -11 dB，無明顯副歌能量落差。</button>
+        <div class="quiz-feedback" id="quiz-feedback"></div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>知識驗證：綜合測試 <span class="wiki-ref">[[overview]]</span></span>
+      <span>Slide 8 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 9: How LLM Wiki Built This -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">08 / 方法論：LLM Wiki 知識庫工程</div>
+      <h2>這份簡報是如何從 LLM Wiki 編譯出來的？</h2>
+      <p class="lead">不同於傳統 RAG 每次提問才臨時搜尋文件碎片，<b>LLM Wiki</b> 將 5 篇論文預先編譯為互相關聯的持久化知識網絡：</p>
+      <div class="grid-3" style="margin-top: 18px;">
+        <div class="card">
+          <h3>Layer 1: Raw Sources</h3>
+          <p>5 篇 MIR 論文存放於 <code>raw/</code>，保持唯讀不可變，確保所有數據（如 2:38、AUC 0.91）皆有明確學術出處。</p>
+        </div>
+        <div class="card">
+          <h3>Layer 2: Compiled Wiki</h3>
+          <p>AI 透過 <code>AGENTS.md</code> 規範，將論文拆解為 <b>Sources / Concepts / Entities</b> 雙向連結頁，並標註跨論文矛盾（如 Melon vs. Spotify）。</p>
+        </div>
+        <div class="card">
+          <h3>Layer 3: Verification & Slides</h3>
+          <p>生成簡報時先讀取 <code>index.md</code> 與 <code>overview.md</code>，再經過「事實核對閘門」確認無數據幻覺後才輸出 HTML。</p>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>架構參考：Andrej Karpathy LLM Wiki Pattern (<span class="wiki-ref">AGENTS.md</span>)</span>
+      <span>Slide 9 / 10</span>
+    </footer>
+  </section>
+
+  <!-- Slide 10: Summary -->
+  <section class="slide">
+    <div>
+      <div class="slide-tag">09 / 總結與核心帶走觀念</div>
+      <h2>K-Pop 爆紅公式的四大關鍵結論</h2>
+      <div class="grid-2" style="margin-top: 18px;">
+        <div class="card">
+          <h3>1. 聲學是基礎，結構是靈魂</h3>
+          <p>高 Energy 與 Danceability 決定商業門檻，但每 15–20 秒切換音色的「多段式拼接」與 Anti-Drop 才是留住聽眾的關鍵。</p>
+        </div>
+        <div class="card">
+          <h3>2. 時間軸全面向演算法妥協</h3>
+          <p>歌長壓縮至 2 分半左右、前奏縮至 4 秒、刪減 Bridge，一切設計皆為了「前 3 秒留存」與「30 秒串流循環」。</p>
+        </div>
+        <div class="card">
+          <h3>3. 國內外市場是兩套聲學標準</h3>
+          <p>韓國 Melon 偏愛高 Valence 清新旋律；全球 Spotify 偏愛高 Energy 重拍舞曲，製作策略需依目標市場調整。</p>
+        </div>
+        <div class="card">
+          <h3>4. 視聽多模態決定最終天花板</h3>
+          <p>音訊 + 40% 左右英文歌詞 + 上半身手勢編舞，能讓爆紅預測準確度（AUC）從 0.74 躍升至 0.91。</p>
+        </div>
+      </div>
+    </div>
+    <footer class="slide-footer">
+      <span>感謝聆聽 ｜ 完整知識庫與工作流報告請見專案資料夾</span>
+      <span>Slide 10 / 10</span>
+    </footer>
+  </section>
+</main>
+
+<script>
+  let current = 0;
+  const slides = document.querySelectorAll('.slide');
+  const counter = document.getElementById('slide-counter');
+  const fill = document.getElementById('progress-fill');
+
+  function updateUI() {
+    slides.forEach((s, i) => s.classList.toggle('active', i === current));
+    counter.textContent = `${current + 1} / ${slides.length}`;
+    fill.style.width = `${((current + 1) / slides.length) * 100}%`;
+  }
+  function nextSlide() { if (current < slides.length - 1) { current++; updateUI(); } }
+  function prevSlide() { if (current > 0) { current--; updateUI(); } }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+    if (e.key === 'ArrowLeft') prevSlide();
+  });
+
+  function checkAnswer(choice) {
+    const fb = document.getElementById('quiz-feedback');
+    fb.style.display = 'block';
+    if (choice === 2) {
+      fb.style.background = '#dcfce7';
+      fb.style.color = '#166534';
+      fb.innerHTML = '<b>答對了！</b> 方案 B 完美命中所有短影音與多模態爆紅指標：歌長接近 2:38 趨勢、前奏 4.2 秒內進副歌搶攻前 3 秒注意力、42% 英文歌詞降低全球跟唱門檻，且上半身手勢編舞在直式螢幕的傳播效率高出 3.4 倍。';
+    } else {
+      fb.style.background = '#fee2e2';
+      fb.style.color = '#991b1b';
+      fb.innerHTML = '<b>再想一想！</b> 過長的前奏（超過 14 秒）與複雜隊形走位在 TikTok 前 3 秒極易被滑走，且低響度與單一原聲結構較難在 Spotify 全球榜單脫穎而出。正確答案為 <b>B</b>。';
+    }
+  }
+</script>
+</body>
+</html>
